@@ -11,6 +11,7 @@ export default defineConfig({
     }
   },
   build: {
-    outDir: 'dist',
+    outDir: '../../miniapp/dist',
+    emptyOutDir: true,
   }
 });
