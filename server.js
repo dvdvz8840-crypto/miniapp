@@ -3,95 +3,68 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
-const { Telegraf } = require('telegraf');
 
+const isVercel = !!process.env.VERCEL;
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// On Vercel uploads go to /tmp (ephemeral, but enough for serverless)
-const isVercel = process.env.VERCEL === '1';
 const uploadsDir = isVercel ? '/tmp/uploads' : path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
 app.use('/uploads', express.static(uploadsDir));
-app.use(express.static(path.join(__dirname, 'miniapp/dist')));
+app.use(express.static(path.join(__dirname, 'miniapp/src/dist')));
+
+// Health check
+app.get('/api/health', (req, res) => res.json({ ok: true }));
 
 app.use('/api', require('./routes/api'));
 app.use('/admin', require('./routes/admin'));
 
 app.get('*', (req, res) => {
-  const indexPath = path.join(__dirname, 'miniapp/dist/index.html');
+  const indexPath = path.join(__dirname, 'miniapp/src/dist/index.html');
   if (fs.existsSync(indexPath)) {
     res.sendFile(indexPath);
   } else {
-    res.status(200).send('<h2>Gift Shop API is running</h2><p>Frontend not built yet.</p>');
+    res.status(200).send('Gift Shop API running');
   }
 });
 
-const WEBAPP_URL = process.env.WEBAPP_URL || 'https://your-domain.vercel.app';
+// Bot setup
+if (process.env.BOT_TOKEN && !isVercel) {
+  try {
+    const { Telegraf } = require('telegraf');
+    const bot = new Telegraf(process.env.BOT_TOKEN);
+    const WEBAPP_URL = process.env.WEBAPP_URL || 'https://localhost:3000';
 
-// ── BOT ──────────────────────────────────────────────────────
-let bot;
-if (process.env.BOT_TOKEN) {
-  bot = new Telegraf(process.env.BOT_TOKEN);
-
-  bot.start(async (ctx) => {
-    const payload = ctx.startPayload;
-    const url = payload ? `${WEBAPP_URL}?ref=${payload}` : WEBAPP_URL;
-    await ctx.replyWithPhoto(
-      { url: 'https://via.placeholder.com/600x300/6C63FF/ffffff?text=Gift+Shop' },
-      {
-        caption: `🎁 *Добро пожаловать в Gift Shop!*\n\nПокупай анлимитные подарки Telegram за звёзды ⭐\n\n🐻 Мишки, 💎 Алмазы, 🌹 Розы и многое другое\n🎰 Розыгрыши с призами\n👥 Реферальная программа`,
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [[{ text: '🛍 Открыть магазин', web_app: { url } }]]
-        }
-      }
-    );
-  });
-
-  bot.command('admin', async (ctx) => {
-    if (String(ctx.from.id) !== String(process.env.ADMIN_ID)) {
-      return ctx.reply('❌ Нет доступа');
-    }
-    await ctx.reply('👑 Добро пожаловать, администратор!', {
-      reply_markup: {
-        inline_keyboard: [[
-          { text: '⚙️ Админ-панель', web_app: { url: `${WEBAPP_URL}?admin=true` } }
-        ]]
-      }
+    bot.start(async (ctx) => {
+      const url = ctx.startPayload ? `${WEBAPP_URL}?ref=${ctx.startPayload}` : WEBAPP_URL;
+      await ctx.reply('🛍 Открыть магазин:', {
+        reply_markup: { inline_keyboard: [[{ text: '🛍 Открыть', web_app: { url } }]] }
+      });
     });
-  });
 
-  bot.on('pre_checkout_query', (ctx) => ctx.answerPreCheckoutQuery(true));
-
-  bot.on('successful_payment', async (ctx) => {
-    const amount = ctx.message.successful_payment.total_amount;
-    const userId = ctx.from.id;
-    try {
+    bot.on('pre_checkout_query', (ctx) => ctx.answerPreCheckoutQuery(true));
+    bot.on('successful_payment', async (ctx) => {
+      const amount = ctx.message.successful_payment.total_amount;
       const db = require('./database');
-      db.prepare('UPDATE users SET balance = balance + ?, total_deposited = total_deposited + ? WHERE telegram_id = ?').run(amount, amount, userId);
-      await ctx.reply(`✅ Баланс пополнен на ${amount} ⭐`);
-    } catch (err) { console.error(err); }
-  });
-}
+      db.prepare('UPDATE users SET balance = balance + ?, total_deposited = total_deposited + ? WHERE telegram_id = ?')
+        .run(amount, amount, ctx.from.id);
+      await ctx.reply(`✅ +${amount} ⭐`);
+    });
 
-// Vercel: export app; local dev: listen + long-polling
-if (isVercel) {
-  module.exports = app;
-} else {
-  const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => {
-    console.log(`✅ Server on port ${PORT}`);
-    if (bot) {
+    const PORT = process.env.PORT || 3000;
+    app.listen(PORT, () => {
+      console.log(`✅ Server on port ${PORT}`);
       bot.launch().then(() => console.log('🤖 Bot started')).catch(console.error);
-    }
-  });
-  if (bot) {
+    });
     process.once('SIGINT', () => bot.stop('SIGINT'));
     process.once('SIGTERM', () => bot.stop('SIGTERM'));
+  } catch (err) {
+    console.error('Bot error:', err.message);
   }
 }
+
+module.exports = app;
