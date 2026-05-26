@@ -11,7 +11,9 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-const uploadsDir = path.join(__dirname, 'uploads');
+// On Vercel uploads go to /tmp (ephemeral, but enough for serverless)
+const isVercel = process.env.VERCEL === '1';
+const uploadsDir = isVercel ? '/tmp/uploads' : path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
 app.use('/uploads', express.static(uploadsDir));
@@ -21,7 +23,12 @@ app.use('/api', require('./routes/api'));
 app.use('/admin', require('./routes/admin'));
 
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'miniapp/dist/index.html'));
+  const indexPath = path.join(__dirname, 'miniapp/dist/index.html');
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(200).send('<h2>Gift Shop API is running</h2><p>Frontend not built yet.</p>');
+  }
 });
 
 const WEBAPP_URL = process.env.WEBAPP_URL || 'https://your-domain.vercel.app';
@@ -73,7 +80,7 @@ if (process.env.BOT_TOKEN) {
 }
 
 // Vercel: export app; local dev: listen + long-polling
-if (process.env.VERCEL) {
+if (isVercel) {
   module.exports = app;
 } else {
   const PORT = process.env.PORT || 3000;
