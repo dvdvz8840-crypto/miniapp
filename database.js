@@ -3,6 +3,8 @@ const path = require('path');
 
 const db = new Database(path.join(__dirname, 'shop.db'));
 
+db.pragma('journal_mode = WAL');
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY,
@@ -12,6 +14,7 @@ db.exec(`
     last_name TEXT,
     photo_url TEXT,
     balance INTEGER DEFAULT 0,
+    total_deposited INTEGER DEFAULT 0,
     referral_code TEXT UNIQUE,
     referred_by INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -23,6 +26,7 @@ db.exec(`
     description TEXT,
     price INTEGER NOT NULL,
     image_url TEXT,
+    emoji TEXT DEFAULT '🎁',
     stock INTEGER DEFAULT -1,
     is_active INTEGER DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -45,7 +49,11 @@ db.exec(`
     title TEXT NOT NULL,
     description TEXT,
     prize TEXT,
+    photo_url TEXT,
     ends_at DATETIME,
+    channel_username TEXT,
+    min_deposit INTEGER DEFAULT 0,
+    conditions_text TEXT,
     is_active INTEGER DEFAULT 1,
     winner_id INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -62,9 +70,27 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS promo_codes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     code TEXT UNIQUE NOT NULL,
-    discount INTEGER NOT NULL,
-    uses_left INTEGER DEFAULT -1,
+    stars_amount INTEGER NOT NULL,
+    max_activations INTEGER DEFAULT -1,
+    activations_count INTEGER DEFAULT 0,
     is_active INTEGER DEFAULT 1,
+    expires_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS promo_uses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    promo_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    used_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(promo_id, user_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS bans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    telegram_id INTEGER UNIQUE NOT NULL,
+    reason TEXT,
+    banned_until DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 `);
@@ -72,14 +98,13 @@ db.exec(`
 function seedDefaultProducts() {
   const existing = db.prepare('SELECT COUNT(*) as count FROM products').get();
   if (existing.count === 0) {
-    const insert = db.prepare(`
-      INSERT INTO products (name, description, price, image_url, stock)
-      VALUES (?, ?, ?, ?, ?)
-    `);
-    insert.run('🐻 Плюшевый мишка', 'Милый подарок — анлимитный мишка в Telegram', 15, '/uploads/bear.png', -1);
-    insert.run('💎 Алмаз', 'Редкий подарок — сверкающий алмаз', 100, '/uploads/diamond.png', -1);
-    insert.run('🌹 Роза', 'Нежный подарок — красивая роза', 25, '/uploads/rose.png', -1);
-    insert.run('🎂 Торт', 'Праздничный торт для особых случаев', 50, '/uploads/cake.png', -1);
+    const insert = db.prepare('INSERT INTO products (name, description, price, emoji, stock) VALUES (?, ?, ?, ?, ?)');
+    insert.run('Плюшевый мишка', 'Анлимитный подарок-мишка в Telegram', 15, '🐻', -1);
+    insert.run('Алмаз', 'Редкий сверкающий алмаз', 100, '💎', -1);
+    insert.run('Роза', 'Нежный подарок для особых', 25, '🌹', -1);
+    insert.run('Торт', 'Праздничный торт', 50, '🎂', -1);
+    insert.run('Корона', 'Покажи кто тут главный', 200, '👑', -1);
+    insert.run('Сердце', 'Подарок от всего сердца', 30, '❤️', -1);
   }
 }
 
