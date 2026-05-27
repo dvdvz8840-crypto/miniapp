@@ -1,18 +1,8 @@
 const Database = require('better-sqlite3');
-const path = require('path');
-const fs = require('fs');
+  const path = require('path');
 
-const isVercel = !!process.env.VERCEL;
-const dbPath = isVercel ? '/tmp/shop.db' : path.join(__dirname, 'shop.db');
-
-let db;
-try {
-  db = new Database(dbPath);
-
-  // WAL mode only for local (causes issues in serverless /tmp)
-  if (!isVercel) {
-    db.pragma('journal_mode = WAL');
-  }
+  const db = new Database(path.join(__dirname, 'shop.db'));
+  db.pragma('journal_mode = WAL');
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -97,27 +87,19 @@ try {
     );
   `);
 
-  // Seed default products
-  const existing = db.prepare('SELECT COUNT(*) as count FROM products').get();
-  if (existing.count === 0) {
-    const ins = db.prepare('INSERT INTO products (name, description, price, emoji, stock) VALUES (?, ?, ?, ?, ?)');
-    ins.run('Плюшевый мишка', 'Анлимитный подарок-мишка в Telegram', 15, '🐻', -1);
-    ins.run('Алмаз', 'Редкий сверкающий алмаз', 100, '💎', -1);
-    ins.run('Роза', 'Нежный подарок', 25, '🌹', -1);
-    ins.run('Торт', 'Праздничный торт', 50, '🎂', -1);
-    ins.run('Корона', 'Покажи кто тут главный', 200, '👑', -1);
-    ins.run('Сердце', 'Подарок от всего сердца', 30, '❤️', -1);
+  function seedDefaultProducts() {
+    const existing = db.prepare('SELECT COUNT(*) as count FROM products').get();
+    if (existing.count === 0) {
+      const ins = db.prepare('INSERT INTO products (name, description, price, emoji, stock) VALUES (?, ?, ?, ?, ?)');
+      ins.run('Плюшевый мишка', 'Анлимитный подарок-мишка в Telegram', 15, '🐻', -1);
+      ins.run('Алмаз', 'Редкий сверкающий алмаз', 100, '💎', -1);
+      ins.run('Роза', 'Нежный подарок для особых', 25, '🌹', -1);
+      ins.run('Торт', 'Праздничный торт', 50, '🎂', -1);
+      ins.run('Корона', 'Покажи кто тут главный', 200, '👑', -1);
+      ins.run('Сердце', 'Подарок от всего сердца', 30, '❤️', -1);
+    }
   }
+  seedDefaultProducts();
 
-  console.log('✅ Database initialized at', dbPath);
-} catch (err) {
-  console.error('❌ Database init error:', err.message);
-  // Fallback: mock db so server doesn't crash completely
-  db = {
-    prepare: () => ({ get: () => null, all: () => [], run: () => {} }),
-    exec: () => {},
-    pragma: () => {},
-  };
-}
-
-module.exports = db;
+  module.exports = db;
+  

@@ -1,0 +1,8 @@
+node_modules/
+  miniapp/node_modules/
+  miniapp/dist/
+  shop.db
+  .env
+  uploads/
+  *.log
+  
