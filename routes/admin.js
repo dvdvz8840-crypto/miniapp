@@ -4,14 +4,17 @@ const db = require('../database');
 const multer = require('multer');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
-const fs = require('fs');
 
-const isVercel = process.env.VERCEL === '1';
-const uploadsDir = isVercel ? '/tmp/uploads' : path.join(__dirname, '../uploads');
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+const uploadsDir = process.env.VERCEL
+  ? '/tmp/uploads'
+  : path.join(__dirname, '../uploads');
 
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadsDir),
+  destination: (req, file, cb) => {
+    const fss = require('fs');
+    if (!fss.existsSync(uploadsDir)) fss.mkdirSync(uploadsDir, { recursive: true });
+    cb(null, uploadsDir);
+  },
   filename: (req, file, cb) => cb(null, uuidv4() + path.extname(file.originalname)),
 });
 const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
@@ -20,12 +23,6 @@ function adminOnly(req, res, next) {
   const adminId = process.env.ADMIN_ID;
   const userId = req.headers['x-user-id'] || req.query.admin_id || req.body?.admin_id;
   if (String(userId) !== String(adminId)) {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
-  next();
-}
-
-router.use(adminOnly);
     return res.status(403).json({ error: 'Forbidden' });
   }
   next();
